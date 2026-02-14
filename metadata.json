@@ -1,0 +1,8 @@
+{
+  "name": "Sovereign Quant Agent",
+  "description": "A high-fidelity sovereign financial dashboard that leverages TEE privacy, MemSync persistence, and real-time quantitative risk forecasting to manage crypto portfolios securely.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
