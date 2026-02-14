@@ -17,7 +17,12 @@ import {
   Globe,
   TrendingUp,
   AlertCircle,
-  XCircle
+  XCircle,
+  ExternalLink,
+  HelpCircle,
+  RefreshCcw,
+  Monitor,
+  Play
 } from 'lucide-react';
 
 const HOLDINGS = {
@@ -53,29 +58,27 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Listen for Wallet Changes
   useEffect(() => {
-    const { ethereum } = window as any;
-    if (ethereum) {
+    const provider = ogMockService.getProvider();
+    if (provider && provider.on) {
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length > 0) {
           setAgentState(prev => ({ ...prev, walletAddress: accounts[0] }));
+          setError(null);
         } else {
           setAgentState(prev => ({ ...prev, walletAddress: null }));
         }
       };
+      const handleChainChanged = () => window.location.reload();
 
-      const handleChainChanged = () => {
-        // Reload page as recommended by MetaMask docs
-        window.location.reload();
-      };
-
-      ethereum.on('accountsChanged', handleAccountsChanged);
-      ethereum.on('chainChanged', handleChainChanged);
+      provider.on('accountsChanged', handleAccountsChanged);
+      provider.on('chainChanged', handleChainChanged);
 
       return () => {
-        ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        ethereum.removeListener('chainChanged', handleChainChanged);
+        if (provider.removeListener) {
+          provider.removeListener('accountsChanged', handleAccountsChanged);
+          provider.removeListener('chainChanged', handleChainChanged);
+        }
       };
     }
   }, []);
@@ -95,17 +98,17 @@ const App: React.FC = () => {
     ogMockService.saveMemSync(newState);
   };
 
-  const handleConnect = async () => {
+  const handleConnect = async (simulate: boolean = false) => {
     setError(null);
     setIsConnecting(true);
     try {
-      const address = await ogMockService.connectWallet();
+      const address = await ogMockService.connectWallet(simulate);
       const newState = { ...agentState, walletAddress: address };
       setAgentState(newState);
       ogMockService.saveMemSync(newState);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || "An error occurred while connecting your wallet.");
+      console.error("Wallet Error:", err);
+      setError(err.message || "Connection failed.");
     } finally {
       setIsConnecting(false);
     }
@@ -125,94 +128,123 @@ const App: React.FC = () => {
       <DashboardHeader 
         state={agentState} 
         onRefresh={syncData} 
-        onConnect={handleConnect}
+        onConnect={() => handleConnect(false)}
         isSyncing={isSyncing} 
         isConnecting={isConnecting}
       />
 
       <main className="flex-1 max-w-[1600px] mx-auto w-full p-4 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* Left Section (8 columns) */}
         <div className="lg:col-span-8 space-y-8">
           
-          {/* Executive Stats Card */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <StatCard 
-              label="TOTAL AUM (TEE)" 
-              value={`$${totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-              subValue="Live Revaluation"
-              icon={<Wallet className="text-cyan-400" />} 
-            />
-            <StatCard 
-              label="RISK INDEX" 
-              value="18.5" 
-              subValue="Stable Range"
-              icon={<BarChart3 className="text-purple-400" />} 
-            />
-            <StatCard 
-              label="TEE LOAD" 
-              value="14%" 
-              subValue="Isolated"
-              icon={<Cpu className="text-emerald-400" />} 
-            />
-            <StatCard 
-              label="NODES" 
-              value="1,402" 
-              subValue="Decentralized"
-              icon={<Globe className="text-blue-400" />} 
-            />
+            <StatCard label="TOTAL AUM (TEE)" value={`$${totalPortfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} subValue="Live Revaluation" icon={<Wallet className="text-cyan-400" />} />
+            <StatCard label="RISK INDEX" value="18.5" subValue="Stable Range" icon={<BarChart3 className="text-purple-400" />} />
+            <StatCard label="TEE LOAD" value="14%" subValue="Isolated" icon={<Cpu className="text-emerald-400" />} />
+            <StatCard label="NODES" value="1,402" subValue="Decentralized" icon={<Globe className="text-blue-400" />} />
           </div>
 
           {error && (
-            <div className="p-6 bg-rose-500/10 border border-rose-500/20 rounded-3xl flex items-center justify-between gap-6 animate-in slide-in-from-top-4 duration-500">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-rose-500/20 rounded-2xl text-rose-400">
-                  <XCircle size={24} />
+            <div className="p-8 bg-slate-900 border border-white/5 rounded-[32px] flex flex-col gap-6 animate-in slide-in-from-top-4 duration-500 shadow-2xl">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 bg-rose-500/10 rounded-2xl text-rose-400 border border-rose-500/20">
+                    <XCircle size={32} />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-white tracking-tight uppercase">Initialization Conflict</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-md">{error.replace('SANDBOX_RESTRICTION: ', '').replace('METAMASK_NOT_FOUND: ', '')}</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-white tracking-tight">Wallet Error</h4>
-                  <p className="text-xs text-slate-400 mt-1">{error}</p>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => handleConnect(false)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-black transition-all text-white border border-white/10 uppercase tracking-widest"
+                  >
+                    <RefreshCcw size={14} /> Retry
+                  </button>
+                  <button 
+                    onClick={() => handleConnect(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-[10px] font-black transition-all text-white shadow-lg shadow-cyan-500/20 uppercase tracking-widest"
+                  >
+                    <Play size={14} fill="currentColor" /> Demo Mode
+                  </button>
                 </div>
               </div>
-              <button 
-                onClick={() => setError(null)}
-                className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
-              >
-                Dismiss
-              </button>
+              
+              <div className="pt-6 border-t border-white/5">
+                {error.includes('SANDBOX_RESTRICTION') ? (
+                  <div className="bg-cyan-500/5 p-6 rounded-2xl border border-cyan-500/20 flex flex-col sm:flex-row items-center gap-6">
+                    <div className="p-4 bg-cyan-500/10 rounded-xl text-cyan-400">
+                      <Monitor size={24} />
+                    </div>
+                    <div>
+                      <h5 className="font-black text-white uppercase text-xs mb-1 tracking-widest">Sandbox Limitation Detected</h5>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        MetaMask is restricted inside iframes for security. To use your real wallet, <b>open this app in a new browser tab</b>. Alternatively, use <b>Demo Mode</b> to explore the dashboard.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white/5 p-6 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-center gap-6">
+                    <div className="p-4 bg-white/10 rounded-xl text-white">
+                      <HelpCircle size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="font-black text-white uppercase text-xs mb-1 tracking-widest">Environment Setup</h5>
+                      <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
+                        Please ensure the MetaMask extension is installed and enabled. If it is already installed, try refreshing the page.
+                      </p>
+                      <a href="https://metamask.io/download/" target="_blank" className="text-[9px] font-black text-cyan-400 uppercase tracking-widest border-b border-cyan-400/30 pb-0.5">Metamask.io/Download</a>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {!agentState.walletAddress && !error && (
-            <div className="p-6 bg-cyan-500/5 border border-cyan-500/20 rounded-3xl flex items-center justify-between gap-6 animate-in slide-in-from-top-4 duration-500">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-cyan-500/10 rounded-2xl text-cyan-400">
-                  <AlertCircle size={24} />
+            <div className="p-10 glass border border-cyan-500/20 rounded-[40px] flex flex-col md:flex-row items-center justify-between gap-10 animate-in slide-in-from-top-4 duration-500 shadow-2xl overflow-hidden relative">
+              <div className="absolute top-0 right-0 p-8 opacity-10">
+                <ShieldCheck size={160} className="text-cyan-400" />
+              </div>
+              <div className="flex items-center gap-6 relative z-10">
+                <div className="p-5 bg-cyan-500/10 rounded-3xl text-cyan-400 border border-cyan-500/20 shadow-inner group">
+                  <ShieldCheck size={40} className="group-hover:scale-110 transition-transform" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-white tracking-tight">Wallet Disconnected</h4>
-                  <p className="text-xs text-slate-400 mt-1">Connect your MetaMask to the OpenGradient Testnet to view on-chain asset provenance.</p>
+                  <h4 className="text-xl font-black text-white tracking-tight uppercase">Identity Attestation</h4>
+                  <p className="text-xs text-slate-400 mt-1 max-w-sm leading-relaxed">
+                    A secure cryptographic signature is required to unlock your private TEE-secured financial enclave.
+                  </p>
                 </div>
               </div>
-              <button 
-                onClick={handleConnect}
-                disabled={isConnecting}
-                className="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-cyan-500/20 active:scale-95 disabled:opacity-50"
-              >
-                {isConnecting ? 'Opening MetaMask...' : 'Connect Now'}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto relative z-10">
+                <button 
+                  onClick={() => handleConnect(false)}
+                  disabled={isConnecting}
+                  className="px-8 py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-cyan-500/20 active:scale-95 disabled:opacity-50"
+                >
+                  {isConnecting ? 'Linking Enclave...' : 'Link MetaMask'}
+                </button>
+                <button 
+                   onClick={() => handleConnect(true)}
+                   className="px-6 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs uppercase tracking-widest rounded-2xl transition-all"
+                >
+                   Try Demo Mode
+                </button>
+              </div>
             </div>
           )}
 
           <VolatilityChart data={forecast} />
 
-          {/* Secure Ledger */}
           <div className="relative glass border border-white/5 rounded-[32px] p-8 overflow-hidden shadow-2xl transition-all duration-500 hover:border-white/10">
             {attesting && (
               <div className="absolute inset-0 z-20 glass flex flex-col items-center justify-center backdrop-blur-md">
                 <div className="flex items-center gap-3 bg-cyan-500/10 px-6 py-3 rounded-2xl border border-cyan-500/20 text-cyan-400 animate-pulse">
                   <Lock size={20} />
-                  <span className="font-mono text-xs tracking-widest uppercase">Remote Attestation...</span>
+                  <span className="font-mono text-xs tracking-widest uppercase text-center leading-loose font-bold">Verifying TEE Integrity...</span>
                 </div>
               </div>
             )}
@@ -253,26 +285,25 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Section (4 columns) */}
         <div className="lg:col-span-4 space-y-8">
           <ChatInterface riskLevel={agentState.riskTolerance} />
           <RiskSettings current={agentState.riskTolerance} onChange={handleRiskChange} />
           
-          <div className="p-6 glass border border-white/5 rounded-[32px] bg-gradient-to-br from-cyan-500/5 to-transparent">
+          <div className="p-6 glass border border-white/5 rounded-[32px] bg-gradient-to-br from-cyan-500/5 to-transparent shadow-xl">
              <div className="flex items-center gap-3 mb-4">
                <TrendingUp size={20} className="text-cyan-400" />
-               <h4 className="text-sm font-black uppercase tracking-widest">Market Context</h4>
+               <h4 className="text-sm font-black uppercase tracking-widest">Risk Context</h4>
              </div>
              <p className="text-xs text-slate-400 leading-relaxed font-medium">
-               Quant Agent is currently optimizing for <span className="text-white font-bold">{agentState.riskTolerance}</span> risk. 
-               Last MemSync snapshot was performed {(Date.now() - agentState.lastSync) / 1000 < 60 ? 'seconds ago' : 'minutes ago'}.
+               Quant Agent is currently optimizing for <span className="text-white font-bold">{agentState.riskTolerance}</span> exposure. 
+               Snapshot verified at {new Date(agentState.lastSync).toLocaleTimeString()}.
              </p>
           </div>
         </div>
       </main>
 
       <footer className="p-10 border-t border-white/5 bg-slate-950/20 text-center">
-        <p className="text-[10px] font-mono uppercase tracking-[0.5em] text-slate-600">&copy; 2025 OPENGRADIENT SOVEREIGN QUANTITATIVE RISK SYSTEM | CONNECTED TO TESTNET</p>
+        <p className="text-[10px] font-mono uppercase tracking-[0.5em] text-slate-600">&copy; 2025 OPENGRADIENT SOVEREIGN QUANTITATIVE RISK SYSTEM | TESTNET NODE</p>
       </footer>
     </div>
   );

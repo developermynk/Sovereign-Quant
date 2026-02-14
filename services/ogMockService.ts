@@ -14,9 +14,8 @@ const BASE_PRICES: Record<string, number> = {
   OG: 8.42
 };
 
-// OpenGradient Testnet Configuration
 const OG_TESTNET_PARAMS = {
-  chainId: '0x1F4E', // Hypothetical Chain ID for OpenGradient Testnet
+  chainId: '0x1F4E', 
   chainName: 'OpenGradient Testnet',
   nativeCurrency: {
     name: 'OpenGradient',
@@ -26,6 +25,8 @@ const OG_TESTNET_PARAMS = {
   rpcUrls: ['https://rpc.testnet.opengradient.ai'],
   blockExplorerUrls: ['https://explorer.testnet.opengradient.ai']
 };
+
+const DEMO_ADDRESS = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
 
 export const ogMockService = {
   getLivePrices: async (): Promise<PriceData[]> => {
@@ -76,47 +77,79 @@ export const ogMockService = {
   },
 
   /**
-   * Real MetaMask Connection Logic
+   * Robust Provider Discovery
+   * Specifically handles getter-only window.ethereum and multi-extension conflicts.
    */
-  connectWallet: async (): Promise<string> => {
-    const { ethereum } = window as any;
+  getProvider: () => {
+    const win = window as any;
     
-    if (!ethereum) {
-      throw new Error("MetaMask is not installed. Please install it to continue.");
+    // 1. Check for standard injection
+    let provider = win.ethereum;
+
+    // 2. Handle multiple providers (e.g. MetaMask + other wallets)
+    if (provider?.providers?.length) {
+      provider = provider.providers.find((p: any) => p.isMetaMask) || provider.providers[0];
+    } 
+    
+    // 3. Fallback to MetaMask-specific injection if window.ethereum is blocked/getter-only
+    if (!provider || !provider.isMetaMask) {
+      if (win.metamask) provider = win.metamask;
+    }
+
+    return provider;
+  },
+
+  connectWallet: async (simulate: boolean = false): Promise<string> => {
+    if (simulate) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return DEMO_ADDRESS;
+    }
+
+    let provider = ogMockService.getProvider();
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // Some browsers delay injection; retry once
+    if (!provider) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      provider = ogMockService.getProvider();
+    }
+
+    if (!provider) {
+      if (isMobile) {
+        const dappUrl = window.location.href.split('//')[1];
+        window.location.href = `https://metamask.app.link/dapp/${dappUrl}`;
+        throw new Error("MetaMask app not found. Redirecting...");
+      }
+      
+      const isSandboxed = window.self !== window.top;
+      if (isSandboxed) {
+        throw new Error("SANDBOX_RESTRICTION: MetaMask cannot inject into cross-origin iframes. Please open the app in a new tab.");
+      }
+      
+      throw new Error("METAMASK_NOT_FOUND: MetaMask extension not detected. Ensure it's installed and enabled.");
     }
 
     try {
-      // 1. Request Account Access
-      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      const accounts = await provider.request({ method: 'eth_requestAccounts' });
+      if (!accounts || accounts.length === 0) throw new Error("Connection rejected.");
+      
       const address = accounts[0];
 
-      // 2. Try to Switch to OpenGradient Testnet
+      // Switch chain (Silent fail)
       try {
-        await ethereum.request({
+        await provider.request({
           method: 'wallet_switchEthereumChain',
           params: [{ chainId: OG_TESTNET_PARAMS.chainId }],
         });
-      } catch (switchError: any) {
-        // This error code indicates that the chain has not been added to MetaMask.
-        if (switchError.code === 4902) {
-          try {
-            await ethereum.request({
-              method: 'wallet_addEthereumChain',
-              params: [OG_TESTNET_PARAMS],
-            });
-          } catch (addError) {
-            console.error("Failed to add OpenGradient Testnet", addError);
-          }
-        }
-        console.error("Failed to switch network", switchError);
+      } catch (e) {
+        console.warn("Chain switch skipped.");
       }
 
       return address;
     } catch (error: any) {
-      if (error.code === 4001) {
-        throw new Error("Connection request was rejected by the user.");
-      }
-      throw error;
+      if (error.code === 4001) throw new Error("Request rejected by user.");
+      if (error.code === -32002) throw new Error("A request is already pending in MetaMask.");
+      throw new Error(error.message || "Failed to establish secure link.");
     }
   }
 };
